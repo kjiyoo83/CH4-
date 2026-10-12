@@ -1,0 +1,19 @@
+# Visual Studio 임시 파일
+.vs/
+*.sln
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+
+# Unreal Engine 자동 생성 파일
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# 개인 환경 설정 및 인증 파일
+.env
+.env.*
+*.pem
+*.key
