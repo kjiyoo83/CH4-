@@ -13,85 +13,76 @@ void ABGGameModeBase::BeginPlay()
 
     SecretNumberString = GenerateSecretNumber();
 
-    UE_LOG(
-        LogTemp,
-        Warning,
-        TEXT("Secret Number: %s"),
-        *SecretNumberString
-    );
+    UE_LOG(LogTemp, Warning, TEXT("Secret Number: %s"), *SecretNumberString);
 }
 
-void ABGGameModeBase::PrintChatMessageString(
-    ABGPlayerController* InChattingPlayerController,
-    const FString& InChatMessageString)
+void ABGGameModeBase::PrintChatMessageString(ABGPlayerController* InChattingPlayerController, const FString& InChatMessageString)
 {
     if (!IsValid(InChattingPlayerController))
     {
         return;
     }
 
-    // 채팅 메시지의 마지막 세 글자를 추측 숫자로 사용합니다.
-    FString GuessNumberString = InChatMessageString.Right(3);
+    // 마지막 세 글자가 아니라 입력 전체를 검사합니다.
+    const FString& GuessNumberString = InChatMessageString;
 
-    if (IsGuessNumberString(GuessNumberString))
+    if (!IsGuessNumberString(GuessNumberString))
     {
-        FString JudgeResultString =
-            JudgeResult(SecretNumberString, GuessNumberString);
+        InChattingPlayerController->ClientRPCPrintChatMessageString(TEXT("Please enter three different digits from 1 to 9."));
 
-        IncreaseGuessCount(InChattingPlayerController);
-
-        // 모든 플레이어에게 숫자 판정 결과를 전달합니다.
-        for (TActorIterator<ABGPlayerController> It(GetWorld()); It; ++It)
-        {
-            ABGPlayerController* BGPlayerController = *It;
-
-            if (IsValid(BGPlayerController))
-            {
-                FString CombinedMessageString =
-                    InChatMessageString
-                    + TEXT(" -> ")
-                    + JudgeResultString;
-
-                BGPlayerController->ClientRPCPrintChatMessageString(
-                    CombinedMessageString
-                );
-            }
-        }
-
-        // 결과 전달이 끝나면 승패를 한 번만 판정합니다.
-        int32 StrikeCount = 0;
-
-        if (JudgeResultString != TEXT("OUT"))
-        {
-            StrikeCount =
-                FCString::Atoi(*JudgeResultString.Left(1));
-        }
-
-        JudgeGame(InChattingPlayerController, StrikeCount);
+        // 여기서 종료하므로 기회를 소진하지 않습니다.
+        return;
     }
-    else
-    {
-        // 숫자 입력이 아니면 일반 채팅으로 전달합니다.
-        for (TActorIterator<ABGPlayerController> It(GetWorld()); It; ++It)
-        {
-            ABGPlayerController* BGPlayerController = *It;
 
-            if (IsValid(BGPlayerController))
-            {
-                BGPlayerController->ClientRPCPrintChatMessageString(
-                    InChatMessageString
-                );
-            }
+    ABGPlayerState* BGPS = InChattingPlayerController->GetPlayerState<ABGPlayerState>();
+
+    if (!IsValid(BGPS))
+    {
+        return;
+    }
+
+    // 이미 기회를 모두 사용했다면 추가 시도를 막습니다.
+    if (BGPS->CurrentGuessCount >= BGPS->MaxGuessCount)
+    {
+        InChattingPlayerController->ClientRPCPrintChatMessageString(TEXT("You have used all your attempts. Please wait for the other players."));
+
+        return;
+    }
+
+    FString JudgeResultString = JudgeResult(SecretNumberString, GuessNumberString);
+
+    // 올바른 입력일 때만 사용한 기회를 증가시킵니다.
+    IncreaseGuessCount(InChattingPlayerController);
+
+    // 증가한 횟수를 포함해 메시지를 만듭니다.
+    FString CombinedMessageString = BGPS->GetPlayerInfoString() + TEXT(": ") + GuessNumberString + TEXT(" -> ") + JudgeResultString;
+
+    for (TActorIterator<ABGPlayerController> It(GetWorld()); It; ++It)
+    {
+        ABGPlayerController* BGPlayerController = *It;
+
+        if (IsValid(BGPlayerController))
+        {
+            BGPlayerController->ClientRPCPrintChatMessageString(CombinedMessageString);
         }
     }
+
+    int32 StrikeCount = 0;
+
+    if (JudgeResultString != TEXT("OUT"))
+    {
+        StrikeCount = FCString::Atoi(*JudgeResultString.Left(1));
+    }
+
+    // 승패는 한 번만 판정합니다.
+    JudgeGame(InChattingPlayerController, StrikeCount);
 }
 
 void ABGGameModeBase::OnPostLogin(AController* NewPlayer)
 {
     Super::OnPostLogin(NewPlayer);
 
-    ABGPlayerController* BGPlayerController =
-        Cast<ABGPlayerController>(NewPlayer);
+    ABGPlayerController* BGPlayerController = Cast<ABGPlayerController>(NewPlayer);
 
     if (!IsValid(BGPlayerController))
     {
@@ -99,31 +90,24 @@ void ABGGameModeBase::OnPostLogin(AController* NewPlayer)
     }
 
     // 접속한 플레이어에게 보여 줄 공지입니다.
-    BGPlayerController->NotificationText =
-        FText::FromString(TEXT("Connected to the game server."));
+    BGPlayerController->NotificationText = FText::FromString(TEXT("Connected to the game server."));
 
     AllPlayerControllers.AddUnique(BGPlayerController);
 
-    ABGPlayerState* BGPS =
-        BGPlayerController->GetPlayerState<ABGPlayerState>();
+    ABGPlayerState* BGPS = BGPlayerController->GetPlayerState<ABGPlayerState>();
 
     if (!IsValid(BGPS))
     {
         return;
     }
 
-    BGPS->PlayerNameString =
-        TEXT("Player")
-        + FString::FromInt(AllPlayerControllers.Num());
+    BGPS->PlayerNameString = TEXT("Player") + FString::FromInt(AllPlayerControllers.Num());
 
-    ABGGameStateBase* BGGameStateBase =
-        GetGameState<ABGGameStateBase>();
+    ABGGameStateBase* BGGameStateBase = GetGameState<ABGGameStateBase>();
 
     if (IsValid(BGGameStateBase))
     {
-        BGGameStateBase->MulticastRPCBroadcastLoginMessage(
-            BGPS->PlayerNameString
-        );
+        BGGameStateBase->MulticastRPCBroadcastLoginMessage(BGPS->PlayerNameString);
     }
 }
 
@@ -140,8 +124,7 @@ FString ABGGameModeBase::GenerateSecretNumber()
 
     for (int32 i = 0; i < 3; ++i)
     {
-        int32 Index =
-            FMath::RandRange(0, Numbers.Num() - 1);
+        int32 Index = FMath::RandRange(0, Numbers.Num() - 1);
 
         Result.Append(FString::FromInt(Numbers[Index]));
 
@@ -152,8 +135,7 @@ FString ABGGameModeBase::GenerateSecretNumber()
     return Result;
 }
 
-bool ABGGameModeBase::IsGuessNumberString(
-    const FString& InNumberString)
+bool ABGGameModeBase::IsGuessNumberString(const FString& InNumberString)
 {
     if (InNumberString.Len() != 3)
     {
@@ -182,9 +164,7 @@ bool ABGGameModeBase::IsGuessNumberString(
     return true;
 }
 
-FString ABGGameModeBase::JudgeResult(
-    const FString& InSecretNumberString,
-    const FString& InGuessNumberString)
+FString ABGGameModeBase::JudgeResult(const FString& InSecretNumberString, const FString& InGuessNumberString)
 {
     int32 StrikeCount = 0;
     int32 BallCount = 0;
@@ -197,8 +177,7 @@ FString ABGGameModeBase::JudgeResult(
         }
         else
         {
-            FString PlayerGuessChar =
-                FString::Printf(TEXT("%c"), InGuessNumberString[i]);
+            FString PlayerGuessChar = FString::Printf(TEXT("%c"), InGuessNumberString[i]);
 
             if (InSecretNumberString.Contains(PlayerGuessChar))
             {
@@ -212,23 +191,17 @@ FString ABGGameModeBase::JudgeResult(
         return TEXT("OUT");
     }
 
-    return FString::Printf(
-        TEXT("%dS%dB"),
-        StrikeCount,
-        BallCount
-    );
+    return FString::Printf(TEXT("%dS%dB"), StrikeCount, BallCount);
 }
 
-void ABGGameModeBase::IncreaseGuessCount(
-    ABGPlayerController* InChattingPlayerController)
+void ABGGameModeBase::IncreaseGuessCount(ABGPlayerController* InChattingPlayerController)
 {
     if (!IsValid(InChattingPlayerController))
     {
         return;
     }
 
-    ABGPlayerState* BGPS =
-        InChattingPlayerController->GetPlayerState<ABGPlayerState>();
+    ABGPlayerState* BGPS = InChattingPlayerController->GetPlayerState<ABGPlayerState>();
 
     if (IsValid(BGPS))
     {
@@ -240,12 +213,7 @@ void ABGGameModeBase::ResetGame()
 {
     SecretNumberString = GenerateSecretNumber();
 
-    UE_LOG(
-        LogTemp,
-        Warning,
-        TEXT("New Secret Number: %s"),
-        *SecretNumberString
-    );
+    UE_LOG( LogTemp, Warning, TEXT("New Secret Number: %s"), *SecretNumberString);
 
     for (const auto& BGPlayerController : AllPlayerControllers)
     {
@@ -254,8 +222,7 @@ void ABGGameModeBase::ResetGame()
             continue;
         }
 
-        ABGPlayerState* BGPS =
-            BGPlayerController->GetPlayerState<ABGPlayerState>();
+        ABGPlayerState* BGPS = BGPlayerController->GetPlayerState<ABGPlayerState>();
 
         if (IsValid(BGPS))
         {
@@ -264,9 +231,7 @@ void ABGGameModeBase::ResetGame()
     }
 }
 
-void ABGGameModeBase::JudgeGame(
-    ABGPlayerController* InChattingPlayerController,
-    int InStrikeCount)
+void ABGGameModeBase::JudgeGame(ABGPlayerController* InChattingPlayerController, int InStrikeCount)
 {
     if (!IsValid(InChattingPlayerController))
     {
@@ -276,24 +241,20 @@ void ABGGameModeBase::JudgeGame(
     // 정답을 맞힌 경우입니다.
     if (InStrikeCount == 3)
     {
-        ABGPlayerState* WinnerPlayerState =
-            InChattingPlayerController->GetPlayerState<ABGPlayerState>();
+        ABGPlayerState* WinnerPlayerState = InChattingPlayerController->GetPlayerState<ABGPlayerState>();
 
         if (!IsValid(WinnerPlayerState))
         {
             return;
         }
 
-        FString WinMessage =
-            WinnerPlayerState->PlayerNameString
-            + TEXT(" has won the game.");
+        FString WinMessage = WinnerPlayerState->PlayerNameString + TEXT(" has won the game.");
 
         for (const auto& BGPlayerController : AllPlayerControllers)
         {
             if (IsValid(BGPlayerController))
             {
-                BGPlayerController->NotificationText =
-                    FText::FromString(WinMessage);
+                BGPlayerController->NotificationText = FText::FromString(WinMessage);
             }
         }
 
@@ -313,8 +274,7 @@ void ABGGameModeBase::JudgeGame(
             continue;
         }
 
-        ABGPlayerState* BGPS =
-            BGPlayerController->GetPlayerState<ABGPlayerState>();
+        ABGPlayerState* BGPS = BGPlayerController->GetPlayerState<ABGPlayerState>();
 
         if (!IsValid(BGPS))
         {
@@ -336,8 +296,7 @@ void ABGGameModeBase::JudgeGame(
         {
             if (IsValid(BGPlayerController))
             {
-                BGPlayerController->NotificationText =
-                    FText::FromString(TEXT("Draw..."));
+                BGPlayerController->NotificationText = FText::FromString(TEXT("Draw..."));
             }
         }
 

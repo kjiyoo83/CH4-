@@ -57,16 +57,16 @@ void ABGPlayerController::SetChatMessageString(const FString& InChatMessageStrin
 	//PrintChatMessageString(ChatMessageString);
 	if (IsLocalController() == true)
 	{
-		//ServerRPCPrintChatMessageString(InChatMessageString);
+		ServerRPCPrintChatMessageString(InChatMessageString);
 
-		ABGPlayerState* BGPS = GetPlayerState<ABGPlayerState>();
-		if (IsValid(BGPS) == true)
-		{
-			//FString CombinedMessageString = BGPS->PlayerNameString + TEXT(": ") + InChatMessageString;
-			FString CombinedMessageString = BGPS->GetPlayerInfoString() + TEXT(": ") + InChatMessageString;
+		//ABGPlayerState* BGPS = GetPlayerState<ABGPlayerState>();
+		//if (IsValid(BGPS) == true)
+		//{
+		//	//FString CombinedMessageString = BGPS->PlayerNameString + TEXT(": ") + InChatMessageString;
+		//	FString CombinedMessageString = BGPS->GetPlayerInfoString() + TEXT(": ") + InChatMessageString;
 
-			ServerRPCPrintChatMessageString(CombinedMessageString);
-		}
+		//	ServerRPCPrintChatMessageString(CombinedMessageString);
+		//}
 	}
 }
 
